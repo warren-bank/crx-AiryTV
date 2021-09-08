@@ -1031,8 +1031,9 @@ var process_epg_data = function(data) {
 }
 
 var preprocess_epg_data = function(raw_data) {
-  var category, channels, channel, episode
+  var channels, category, channel, episode
   var slug, name, hls_url, title, description, duration, start, stop, mp4_url
+  var unique_channel_ids, filter_by_unique_channel_id, sort_by_type_then_name
   var preprocessed_channel
 
   var preprocessed_data = {
@@ -1049,125 +1050,155 @@ var preprocess_epg_data = function(raw_data) {
     return preprocessed_data
   }
 
+  channels = []
+
   for (var i1=0; i1 < raw_data.response.categories.length; i1++) {
     category = raw_data.response.categories[i1]
 
     if ((typeof category !== 'object') || (category === null))
       continue
 
-    channels = []
     if (Array.isArray(category.channels) && category.channels.length)
       channels = channels.concat(category.channels)
     if (Array.isArray(category.stream_channels) && category.stream_channels.length)
       channels = channels.concat(category.stream_channels)
+  }
 
-    if (!channels.length)
+  unique_channel_ids = {}
+
+  filter_by_unique_channel_id = function(channel) {
+    if (!channel.id)
+      return false
+
+    if (unique_channel_ids[channel.id])
+      return false
+
+    unique_channel_ids[channel.id] = true
+    return true
+  }
+
+  sort_by_type_then_name = function(c1, c2) {
+    if (c1.hls !== c2.hls) {
+      return c1.hls ? -1 : 1
+    }
+
+    var c1n, c2n
+    c1n = c1.name.toLowerCase()
+    c2n = c2.name.toLowerCase()
+
+    return (c1n < c2n)
+      ? -1
+      : (c1n > c2n)
+        ? 1
+        : 0
+  }
+
+  channels = channels.filter(filter_by_unique_channel_id)
+  channels = channels.sort(sort_by_type_then_name)
+
+  for (var i2=0; i2 < channels.length; i2++) {
+    channel = channels[i2]
+
+    if (
+         (typeof channel !== 'object') || (channel === null)
+      || !channel.number || !channel.name
+      || (channel.hls && !channel.source_url)
+    ) {
       continue
+    }
 
-    for (var i2=0; i2 < channels.length; i2++) {
-      channel = channels[i2]
+    slug = channel.number + '_' + channel.name
+    name = channel.name.replace(/[_]+/g, ' ')
 
-      if (
-           (typeof channel !== 'object') || (channel === null)
-        || !channel.number || !channel.name
-        || (channel.hls && !channel.source_url)
-      ) {
-        continue
+    if (channel.hls) {
+      preprocessed_channel = {
+        channel: {
+          slug:    slug,
+          name:    name,
+          hls_url: channel.source_url
+        },
+        episodes: []
       }
 
-      slug = channel.number + '_' + channel.name
-      name = channel.name.replace(/[_]+/g, ' ')
+      if (Array.isArray(channel.broadcasts) && channel.broadcasts.length) {
+        for (var i3=0; i3 < channel.broadcasts.length; i3++) {
+          episode = channel.broadcasts[i3]
 
-      if (channel.hls) {
-        preprocessed_channel = {
-          channel: {
-            slug:    slug,
-            name:    name,
-            hls_url: channel.source_url
-          },
-          episodes: []
+          if ((typeof episode !== 'object') || (episode === null))
+            continue
+
+          if (!episode.title || !episode.stream_start_at_iso || !episode.stream_duration)
+            continue
+
+          title       = episode.title
+          description = episode.description || ''
+          duration    = episode.stream_duration * 1000
+          start       = new Date(episode.stream_start_at_iso)
+          stop        = start.getTime() + duration
+          stop        = new Date(stop)
+
+          preprocessed_channel.episodes.push({
+            title:       title,
+            description: description,
+            duration:    duration,
+            start:       start,
+            stop:        stop
+          })
         }
+      }
 
-        if (Array.isArray(channel.broadcasts) && channel.broadcasts.length) {
-          for (var i3=0; i3 < channel.broadcasts.length; i3++) {
-            episode = channel.broadcasts[i3]
+      preprocessed_data.live_stream.push(preprocessed_channel)
+    }
+    else {
+      preprocessed_channel = {
+        channel: {
+          slug: slug,
+          name: name
+        },
+        episodes: []
+      }
+
+      if (Array.isArray(channel.broadcasts) && channel.broadcasts.length) {
+        for (var i3=0; i3 < channel.broadcasts.length; i3++) {
+          episode = channel.broadcasts[i3]
+
+          if ((typeof episode !== 'object') || (episode === null))
+            continue
+
+          if (!episode.title || !Array.isArray(episode.parts) || !episode.parts.length)
+            continue
+
+          title       = episode.title
+          description = episode.description || ''
+          duration    = 0
+          mp4_url     = null
+
+          for (var i4=0; i4 < episode.parts.length; i4++) {
+            episode = episode.parts[i4]
 
             if ((typeof episode !== 'object') || (episode === null))
               continue
 
-            if (!episode.title || !episode.stream_start_at_iso || !episode.stream_duration)
+            if (!episode.duration || !episode.source_url)
               continue
 
-            title       = episode.title
-            description = episode.description || ''
-            duration    = episode.stream_duration * 1000
-            start       = new Date(episode.stream_start_at_iso)
-            stop        = start.getTime() + duration
-            stop        = new Date(stop)
+            duration = episode.duration * 1000
+            mp4_url  = episode.source_url
 
             preprocessed_channel.episodes.push({
               title:       title,
               description: description,
               duration:    duration,
-              start:       start,
-              stop:        stop
+              mp4_url:     mp4_url
             })
+
+            break
           }
         }
-
-        preprocessed_data.live_stream.push(preprocessed_channel)
       }
-      else {
-        preprocessed_channel = {
-          channel: {
-            slug: slug,
-            name: name
-          },
-          episodes: []
-        }
 
-        if (Array.isArray(channel.broadcasts) && channel.broadcasts.length) {
-          for (var i3=0; i3 < channel.broadcasts.length; i3++) {
-            episode = channel.broadcasts[i3]
-
-            if ((typeof episode !== 'object') || (episode === null))
-              continue
-
-            if (!episode.title || !Array.isArray(episode.parts) || !episode.parts.length)
-              continue
-
-            title       = episode.title
-            description = episode.description || ''
-            duration    = 0
-            mp4_url     = null
-
-            for (var i4=0; i4 < episode.parts.length; i4++) {
-              episode = episode.parts[i4]
-
-              if ((typeof episode !== 'object') || (episode === null))
-                continue
-
-              if (!episode.duration || !episode.source_url)
-                continue
-
-              duration = episode.duration * 1000
-              mp4_url  = episode.source_url
-
-              preprocessed_channel.episodes.push({
-                title:       title,
-                description: description,
-                duration:    duration,
-                mp4_url:     mp4_url
-              })
-
-              break
-            }
-          }
-        }
-
-        if (preprocessed_channel.episodes.length)
-          preprocessed_data.on_demand.push(preprocessed_channel)
-      }
+      if (preprocessed_channel.episodes.length)
+        preprocessed_data.on_demand.push(preprocessed_channel)
     }
   }
 
