@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AiryTV
 // @description  Watch videos in external player.
-// @version      1.0.2
+// @version      1.0.3
 // @match        *://airy.tv/*
 // @match        *://*.airy.tv/*
 // @icon         https://airy.tv/wp-content/uploads/2020/11/playstore-icon.png
@@ -1041,7 +1041,7 @@ var process_epg_data = function(data) {
 var preprocess_epg_data = function(raw_data) {
   var channels, category, channel, episode
   var slug, name, hls_url, title, description, duration, start, stop, mp4_url
-  var unique_channel_ids, filter_by_unique_channel_id, sort_by_type_then_name
+  var hashmap_unique_values, reset_filter, filter_by_unique_id, sort_by_type_then_name, filter_by_unique_mp4_url, sort_by_title
   var preprocessed_channel
 
   var preprocessed_data = {
@@ -1072,16 +1072,18 @@ var preprocess_epg_data = function(raw_data) {
       channels = channels.concat(category.stream_channels)
   }
 
-  unique_channel_ids = {}
+  reset_filter = function() {
+    hashmap_unique_values = {}
+  }
 
-  filter_by_unique_channel_id = function(channel) {
+  filter_by_unique_id = function(channel) {
     if (!channel.id)
       return false
 
-    if (unique_channel_ids[channel.id])
+    if (hashmap_unique_values[channel.id])
       return false
 
-    unique_channel_ids[channel.id] = true
+    hashmap_unique_values[channel.id] = true
     return true
   }
 
@@ -1101,7 +1103,31 @@ var preprocess_epg_data = function(raw_data) {
         : 0
   }
 
-  channels = channels.filter(filter_by_unique_channel_id)
+  filter_by_unique_mp4_url = function(episode) {
+    if (!episode.mp4_url)
+      return false
+
+    if (hashmap_unique_values[episode.mp4_url])
+      return false
+
+    hashmap_unique_values[episode.mp4_url] = true
+    return true
+  }
+
+  sort_by_title = function(e1, e2) {
+    var e1t, e2t
+    e1t = e1.title.toLowerCase()
+    e2t = e2.title.toLowerCase()
+
+    return (e1t < e2t)
+      ? -1
+      : (e1t > e2t)
+        ? 1
+        : 0
+  }
+
+  reset_filter()
+  channels = channels.filter(filter_by_unique_id)
   channels = channels.sort(sort_by_type_then_name)
 
   for (var i2=0; i2 < channels.length; i2++) {
@@ -1170,6 +1196,11 @@ var preprocess_epg_data = function(raw_data) {
       }
 
       if (Array.isArray(channel.broadcasts) && channel.broadcasts.length) {
+
+        reset_filter()
+        channel.broadcasts = channel.broadcasts.filter(filter_by_unique_id)
+      //channel.broadcasts = channel.broadcasts.sort(sort_by_title)
+
         for (var i3=0; i3 < channel.broadcasts.length; i3++) {
           episode = channel.broadcasts[i3]
 
@@ -1211,8 +1242,13 @@ var preprocess_epg_data = function(raw_data) {
         }
       }
 
-      if (preprocessed_channel.episodes.length)
+      if (preprocessed_channel.episodes.length) {
+        reset_filter()
+        preprocessed_channel.episodes = preprocessed_channel.episodes.filter(filter_by_unique_mp4_url)
+        preprocessed_channel.episodes = preprocessed_channel.episodes.sort(sort_by_title)
+
         preprocessed_data.on_demand.push(preprocessed_channel)
+      }
     }
   }
 
