@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AiryTV
 // @description  Watch videos in external player.
-// @version      1.0.1
+// @version      1.0.2
 // @match        *://airy.tv/*
 // @match        *://*.airy.tv/*
 // @icon         https://airy.tv/wp-content/uploads/2020/11/playstore-icon.png
@@ -887,7 +887,7 @@ var make_episode_listitem_html = function(referer_url, type, data) {
   return '<li>' + html.join("\n") + '</li>'
 }
 
-var make_webcast_reloaded_div = function(video_url, referer_url) {
+var make_webcast_reloaded_div = function(video_url, referer_url, exclude_proxy) {
   var webcast_reloaded_urls = {
     "icons_basepath":    'https://github.com/warren-bank/crx-webcast-reloaded/raw/gh-pages/chrome_extension/2-release/popup/img/',
 //  "index":             get_webcast_reloaded_url(                  video_url, /* vtt_url= */ null, referer_url),
@@ -905,14 +905,17 @@ var make_webcast_reloaded_div = function(video_url, referer_url) {
     '<a target="_blank" class="video-link" href="' + video_url                               + '" title="direct link to video"><img src="'    + webcast_reloaded_urls.icons_basepath + 'video_link.png"></a>'
   ]
 
+  if (exclude_proxy)
+    delete html[2]
+
   div.setAttribute('class', constants.dom_classes.div_webcast_icons)
   div.innerHTML = html.join("\n")
 
   return div
 }
 
-var insert_webcast_reloaded_div = function(webcast_reloaded_div_parent, video_url, referer_url) {
-  var webcast_reloaded_div = make_webcast_reloaded_div(video_url, referer_url)
+var insert_webcast_reloaded_div = function(webcast_reloaded_div_parent, video_url, referer_url, exclude_proxy) {
+  var webcast_reloaded_div = make_webcast_reloaded_div(video_url, referer_url, exclude_proxy)
 
   if (webcast_reloaded_div_parent.childNodes.length)
     webcast_reloaded_div_parent.insertBefore(webcast_reloaded_div, webcast_reloaded_div_parent.childNodes[0])
@@ -992,7 +995,7 @@ var make_channel_div = function(type, data) {
 
       item_button.addEventListener("click", onclick_start_video)
 
-      insert_webcast_reloaded_div(item, item_button.getAttribute('x-video-url'), referer_url)
+      insert_webcast_reloaded_div(item, item_button.getAttribute('x-video-url'), referer_url, true)
     }
   }
 
