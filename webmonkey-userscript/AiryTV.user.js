@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AiryTV
 // @description  Watch videos in external player.
-// @version      1.0.0
+// @version      1.0.1
 // @match        *://airy.tv/*
 // @match        *://*.airy.tv/*
 // @icon         https://airy.tv/wp-content/uploads/2020/11/playstore-icon.png
@@ -869,9 +869,14 @@ var make_episode_listitem_html = function(referer_url, type, data) {
     append_tr(strings.episode_labels.summary, 2)
 
   var html = [
-    '<table>' + tr.join("\n") + '</table>',
-    '<blockquote>' + data.description + '</blockquote>'
+    '<table>' + tr.join("\n") + '</table>'
   ]
+
+  if (data.description) {
+    html.push(
+      '<blockquote>' + data.description + '</blockquote>'
+    )
+  }
 
   if ((type === 'on_demand') && (data.mp4_url)) {
     html.push(
@@ -1137,6 +1142,9 @@ var preprocess_epg_data = function(raw_data) {
           stop        = start.getTime() + duration
           stop        = new Date(stop)
 
+          if (description === title)
+            description = ''
+
           preprocessed_channel.episodes.push({
             title:       title,
             description: description,
@@ -1172,6 +1180,9 @@ var preprocess_epg_data = function(raw_data) {
           description = episode.description || ''
           duration    = 0
           mp4_url     = null
+
+          if (description === title)
+            description = ''
 
           for (var i4=0; i4 < episode.parts.length; i4++) {
             episode = episode.parts[i4]
